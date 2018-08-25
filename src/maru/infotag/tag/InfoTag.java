@@ -135,4 +135,8 @@ public class InfoTag {
 	public String getText() {
 		return this.text;
 	}
+	
+	public Player getPlayer() {
+		return this.player;
+	}
 }
