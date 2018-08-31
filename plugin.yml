@@ -1,5 +1,5 @@
 name: InfoTag
 main: maru.infotag.Main
 author: maru
-version: 1.0.1
+version: 1.0.2
 api: ["1.0.0"]

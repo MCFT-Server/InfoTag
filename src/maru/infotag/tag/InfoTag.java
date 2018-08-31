@@ -6,14 +6,15 @@ import cn.nukkit.Player;
 import cn.nukkit.Server;
 import cn.nukkit.entity.Entity;
 import cn.nukkit.entity.data.EntityMetadata;
-import cn.nukkit.entity.data.Skin;
+import cn.nukkit.entity.projectile.EntitySnowball;
 import cn.nukkit.item.Item;
 import cn.nukkit.math.Vector3;
+import cn.nukkit.network.protocol.AddEntityPacket;
 import cn.nukkit.network.protocol.AddPlayerPacket;
 import cn.nukkit.network.protocol.MoveEntityAbsolutePacket;
-import cn.nukkit.network.protocol.PlayerListPacket;
 import cn.nukkit.network.protocol.RemoveEntityPacket;
-import cn.nukkit.network.protocol.SetEntityDataPacket;
+import cn.nukkit.network.protocol.SetEntityLinkPacket;
+import cn.nukkit.scheduler.Task;
 import maru.infotag.event.MessageTranslateEvent;
 
 public class InfoTag {
@@ -22,6 +23,7 @@ public class InfoTag {
 
 	private UUID uuid;
 	private long eid;
+	private long peid;
 
 	private boolean ishide = true;
 
@@ -32,6 +34,7 @@ public class InfoTag {
 
 		this.uuid = UUID.randomUUID();
 		this.eid = Entity.entityCount++;
+		this.peid = Entity.entityCount++;
 	}
 
 	private void initPos() {
@@ -64,12 +67,11 @@ public class InfoTag {
 
 	public void show() {
 		initPos();
-
-		AddPlayerPacket pk = new AddPlayerPacket();
-		pk.uuid = uuid;
-		pk.username = this.getText();
-		pk.entityUniqueId = this.eid;
+		
+		AddEntityPacket pk = new AddEntityPacket();
 		pk.entityRuntimeId = this.eid;
+		pk.entityUniqueId = this.eid;
+		pk.type = EntitySnowball.NETWORK_ID;
 		pk.x = (float) this.pos.x;
 		pk.y = (float) this.pos.y;
 		pk.z = (float) this.pos.z;
@@ -78,12 +80,20 @@ public class InfoTag {
 		pk.speedZ = 0;
 		pk.yaw = 0;
 		pk.pitch = 0;
-		long flags = (1L << Entity.DATA_FLAG_IMMOBILE);
-		pk.metadata = new EntityMetadata().putLong(Entity.DATA_FLAGS, flags).putLong(Entity.DATA_LEAD_HOLDER_EID, -1)
+		long flags = (1L << Entity.DATA_FLAG_IMMOBILE) | (1L << Entity.DATA_FLAG_CAN_SHOW_NAMETAG) | (1L << Entity.DATA_FLAG_ALWAYS_SHOW_NAMETAG);
+		pk.metadata = new EntityMetadata()
+				.putLong(Entity.DATA_FLAGS, flags)
+				.putString(Entity.DATA_NAMETAG, this.text)
+				.putLong(Entity.DATA_LEAD_HOLDER_EID, -1)
 				.putFloat(Entity.DATA_SCALE, 0.01f);
-		pk.item = Item.get(Item.AIR);
-
+		
+		SetEntityLinkPacket lpk = new SetEntityLinkPacket();
+		lpk.rider = this.eid;
+		lpk.riding = this.peid;
+		lpk.type = SetEntityLinkPacket.TYPE_RIDE;
+		
 		this.player.dataPacket(pk);
+		this.player.dataPacket(lpk);
 
 		this.ishide = false;
 	}
@@ -91,7 +101,9 @@ public class InfoTag {
 	public void hide() {
 		RemoveEntityPacket pk = new RemoveEntityPacket();
 		pk.eid = this.eid;
-
+		this.player.dataPacket(pk);
+		
+		pk.eid = this.peid;
 		this.player.dataPacket(pk);
 
 		this.ishide = true;
@@ -114,22 +126,46 @@ public class InfoTag {
 	}
 
 	public void setText(String text) {
-		/*
-		SetEntityDataPacket pk = new SetEntityDataPacket();
-		pk.eid = this.eid;
-
+		
+		AddPlayerPacket pk = new AddPlayerPacket();
+		pk.uuid = this.uuid;
+		pk.username = text;
+		pk.entityUniqueId = this.peid;
+		pk.entityRuntimeId = this.peid;
+		pk.x = (float) this.pos.x;
+		pk.y = (float) this.pos.y;
+		pk.z = (float) this.pos.z;
+		pk.speedX = 0;
+		pk.speedY = 0;
+		pk.speedZ = 0;
+		pk.yaw = 0;
+		pk.pitch = 0;
 		long flags = (1L << Entity.DATA_FLAG_IMMOBILE);
 		pk.metadata = new EntityMetadata()
 				.putLong(Entity.DATA_FLAGS, flags)
 				.putLong(Entity.DATA_LEAD_HOLDER_EID, -1)
-				.putFloat(Entity.DATA_SCALE, 0.01f)
-				.putString(Entity.DATA_NAMETAG, text);
+				.putFloat(Entity.DATA_SCALE, 0.01f);
+		pk.item = Item.get(Item.AIR);
+		
+		SetEntityLinkPacket lpk = new SetEntityLinkPacket();
+		lpk.rider = this.eid;
+		lpk.riding = this.peid;
+		lpk.type = SetEntityLinkPacket.TYPE_RIDE;
+		
 		this.player.dataPacket(pk);
-		this.player.directDataPacket(pk);
-		*/
+		
+		Server.getInstance().getScheduler().scheduleRepeatingTask(new Task() {
+			int count = 0;
+			@Override
+			public void onRun(int currentTick) {
+				player.dataPacket(lpk);
+				if (++count == 3) {
+					this.getHandler().cancel();
+				}
+			}
+		}, 1);
 		
 		this.text = text;
-		show();
 	}
 
 	public String getText() {
